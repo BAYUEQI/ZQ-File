@@ -100,4 +100,4 @@ GET https://你的域名/短链ID
 MIT
 
 ---
-> 本项目由 [你的名字或GitHub](https://github.com/yourname) 开发维护，欢迎Star和PR！ 
+> 本项目由 [BAYUEQI](https://github.com/BAYUEQI) 开发维护，欢迎Star和PR！ 
