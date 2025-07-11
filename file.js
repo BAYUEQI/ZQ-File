@@ -970,7 +970,7 @@ export default {
       const corsHeaders = {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Allow-Headers': 'Content-Type, X-From',
       };
       
       // 处理OPTIONS请求
@@ -1025,8 +1025,15 @@ export default {
 
       // API: 新建/获取/编辑/删除文本
     if (url.pathname.startsWith('/api/paste')) {
-        // 新建、编辑、删除需要登录
-        if (['POST','PUT','DELETE'].includes(request.method)) {
+        // 判断是否来自ZQ-SubLink指定域名
+        const fromZQSubLink = 
+          request.headers.get('X-From') === 'ZQ-SubLink' &&
+          (
+            request.headers.get('Origin') === 'https://sublink.vpnjacky.dpdns.org' ||
+            (request.headers.get('Referer') && request.headers.get('Referer').startsWith('https://sublink.vpnjacky.dpdns.org'))
+          );
+        // 只有PUT/DELETE需要token，POST需要token但ZQ-SubLink可以免token
+        if (['PUT','DELETE'].includes(request.method) || (request.method === 'POST' && !fromZQSubLink)) {
           const authed = await checkAuth(request, env);
           if (!authed) {
             return new Response(JSON.stringify({ code: 0, message: '未登录' }), { headers: { 'content-type': 'application/json', ...corsHeaders }, status: 401 });
