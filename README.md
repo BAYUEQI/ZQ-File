@@ -47,7 +47,7 @@ curl -X POST "https://你的域名/api/paste" \
 curl "https://你的域名/api/paste?id=短链ID" -H "Authorization: Bearer 你的token"
 ```
 
-### 获取全部短链
+### 获取全部短链id
 ```bash
 curl "https://你的域名/api/list" -H "Authorization: Bearer 你的token"
 ```
