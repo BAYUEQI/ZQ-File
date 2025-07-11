@@ -1,3 +1,4 @@
+// index.js
 const html = `
 <!DOCTYPE html>
 <html>
@@ -930,14 +931,16 @@ const html = `
       if (!tokenBox) {
         tokenBox = document.createElement('div');
         tokenBox.id = 'token-box';
-        tokenBox.style = 'margin:24px 0 16px 0;padding:18px 22px;background:linear-gradient(90deg,#e0e7ff 0%,#f8fafc 100%);border:2px solid #667eea;border-radius:14px;box-shadow:0 2px 8px rgba(102,126,234,0.08);display:flex;align-items:center;gap:16px;position:relative;overflow:auto;';
-        tokenBox.innerHTML = '<span style="font-size:22px;color:#667eea;margin-right:10px;">🔑</span>' +
-          '<div style="flex:1;min-width:0;">' +
-          '<div style="font-size:15px;color:#555;margin-bottom:4px;">当前 API Token</div>' +
-          '<div id="token-value" style="font-family:monospace;font-size:16px;word-break:break-all;background:#fff;border-radius:6px;padding:6px 10px;display:inline-block;max-width:60vw;">' + token + '</div>' +
+        tokenBox.style = 'margin:20px 0 12px 0;padding:14px 8px;background:linear-gradient(90deg,#e0e7ff 0%,#f8fafc 100%);border:2px solid #667eea;border-radius:12px;box-shadow:0 2px 8px rgba(102,126,234,0.08);display:flex;align-items:flex-start;gap:10px;position:relative;overflow:auto;flex-wrap:wrap;word-break:break-all;';
+        tokenBox.innerHTML = '<span style="font-size:20px;color:#667eea;margin-right:6px;">🔑</span>' +
+          '<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;">' +
+          '<div style="font-size:14px;color:#555;">当前 API Token</div>' +
+          '<div id="token-value" style="font-family:monospace;font-size:13px;word-break:break-all;background:#fff;border-radius:5px;padding:5px 6px;display:block;max-width:100vw;overflow-x:auto;">' + token + '</div>' +
           '</div>' +
-          '<button id="copy-token-btn" style="margin-left:10px;padding:6px 18px;border-radius:7px;border:none;background:linear-gradient(90deg,#667eea 0%,#764ba2 100%);color:#fff;cursor:pointer;font-size:15px;transition:background 0.2s;">复制</button>' +
-          '<button id="logout-btn" style="margin-left:10px;padding:6px 18px;border-radius:7px;border:none;background:linear-gradient(90deg,#ff6b6b 0%,#ee5a52 100%);color:#fff;cursor:pointer;font-size:15px;transition:background 0.2s;">退出登录</button>';
+          '<div style="display:flex;flex-direction:column;gap:6px;min-width:80px;">' +
+          '<button id="copy-token-btn" style="padding:5px 0;border-radius:6px;border:none;background:linear-gradient(90deg,#667eea 0%,#764ba2 100%);color:#fff;cursor:pointer;font-size:13px;transition:background 0.2s;width:100%;">复制</button>' +
+          '<button id="logout-btn" style="padding:5px 0;border-radius:6px;border:none;background:linear-gradient(90deg,#ff6b6b 0%,#ee5a52 100%);color:#fff;cursor:pointer;font-size:13px;transition:background 0.2s;width:100%;">退出登录</button>' +
+          '</div>';
         document.querySelector('.container').prepend(tokenBox);
         document.getElementById('copy-token-btn').onclick = function() {
           navigator.clipboard.writeText(token).then(function(){
