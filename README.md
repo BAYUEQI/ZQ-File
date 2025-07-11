@@ -1,6 +1,6 @@
 # ZQ-File (Cloudflare Workers Pastebin)
 
-一个基于 Cloudflare Workers 的极简文本托管服务，支持短链分享、自定义名称、在线编辑、删除、复制，适合用作订阅链接托管、代码片段分享、临时文本存储等。
+一个基于 Cloudflare Workers 的极简文本/订阅托管服务，支持短链分享、自定义名称、在线编辑、删除、复制，适合用作订阅链接托管、代码片段分享、临时文本存储等。
 
 ## ✨ 功能特色
 - 云端托管，无需服务器，永久免费
@@ -47,6 +47,16 @@ curl -X POST "https://你的域名/api/paste" \
 curl "https://你的域名/api/paste?id=短链ID" -H "Authorization: Bearer 你的token"
 ```
 
+### 获取全部短链
+```bash
+curl "https://你的域名/api/list" -H "Authorization: Bearer 你的token"
+```
+
+### 获取自定义名称
+```bash
+curl "https://你的域名/api/name?id=短链ID" -H "Authorization: Bearer 你的token"
+```
+
 ### 编辑内容
 ```bash
 curl -X PUT "https://你的域名/api/paste" \
@@ -63,16 +73,6 @@ curl -X DELETE "https://你的域名/api/paste" \
   -d '{"id":"短链ID"}'
 ```
 
-### 获取全部短链
-```bash
-curl "https://你的域名/api/list"
-```
-
-### 获取自定义名称
-```bash
-curl "https://你的域名/api/name?id=短链ID"
-```
-
 ### 直接访问短链
 ```
 GET https://你的域名/短链ID
@@ -87,7 +87,7 @@ GET https://你的域名/短链ID
 ## 🔒 安全说明
 - 登录信息仅存储在你的 Cloudflare KV，前端只保存token
 - token有效期为1个月，到期需重新登录
-- 所有API接口（包括获取内容）都需要token
+- 所有API接口（包括获取内容、获取短链列表和自定义名称）都需要token
 - 除非你主动分享，内容不会被第三方看到
 - 无第三方统计、广告、追踪代码
 
