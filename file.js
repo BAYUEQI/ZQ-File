@@ -1,4 +1,3 @@
-// index.js
 const html = `
 <!DOCTYPE html>
 <html>
@@ -873,6 +872,7 @@ const html = `
       return fetch(url, options);
     }
 
+    // 登录逻辑
     async function login() {
       const username = document.getElementById('login-username').value.trim();
       const password = document.getElementById('login-password').value;
@@ -890,6 +890,8 @@ const html = `
         localStorage.setItem('token', data.token);
         showMain();
         if (typeof loadAllPastes === 'function') loadAllPastes();
+        // 显示token
+        renderTokenBox();
       } else {
         document.getElementById('login-error').innerText = data.message;
       }
@@ -902,6 +904,7 @@ const html = `
     function showMain() {
       document.getElementById('login-form').style.display = 'none';
       document.querySelector('.container').style.display = 'block';
+      renderTokenBox();
     }
     function checkLoginDisplay() {
       if (!localStorage.getItem('token')) {
@@ -915,6 +918,40 @@ const html = `
       document.addEventListener('DOMContentLoaded', checkLoginDisplay);
     } else {
       checkLoginDisplay();
+    }
+
+    function renderTokenBox() {
+      let token = localStorage.getItem('token');
+      let tokenBox = document.getElementById('token-box');
+      if (!token) {
+        if (tokenBox) tokenBox.remove();
+        return;
+      }
+      if (!tokenBox) {
+        tokenBox = document.createElement('div');
+        tokenBox.id = 'token-box';
+        tokenBox.style = 'margin:24px 0 16px 0;padding:18px 22px;background:linear-gradient(90deg,#e0e7ff 0%,#f8fafc 100%);border:2px solid #667eea;border-radius:14px;box-shadow:0 2px 8px rgba(102,126,234,0.08);display:flex;align-items:center;gap:16px;position:relative;overflow:auto;';
+        tokenBox.innerHTML = '<span style="font-size:22px;color:#667eea;margin-right:10px;">🔑</span>' +
+          '<div style="flex:1;min-width:0;">' +
+          '<div style="font-size:15px;color:#555;margin-bottom:4px;">当前 API Token</div>' +
+          '<div id="token-value" style="font-family:monospace;font-size:16px;word-break:break-all;background:#fff;border-radius:6px;padding:6px 10px;display:inline-block;max-width:60vw;">' + token + '</div>' +
+          '</div>' +
+          '<button id="copy-token-btn" style="margin-left:10px;padding:6px 18px;border-radius:7px;border:none;background:linear-gradient(90deg,#667eea 0%,#764ba2 100%);color:#fff;cursor:pointer;font-size:15px;transition:background 0.2s;">复制</button>' +
+          '<button id="logout-btn" style="margin-left:10px;padding:6px 18px;border-radius:7px;border:none;background:linear-gradient(90deg,#ff6b6b 0%,#ee5a52 100%);color:#fff;cursor:pointer;font-size:15px;transition:background 0.2s;">退出登录</button>';
+        document.querySelector('.container').prepend(tokenBox);
+        document.getElementById('copy-token-btn').onclick = function() {
+          navigator.clipboard.writeText(token).then(function(){
+            document.getElementById('copy-token-btn').innerText = '已复制';
+            setTimeout(()=>{document.getElementById('copy-token-btn').innerText='复制';}, 1200);
+          });
+        };
+        document.getElementById('logout-btn').onclick = function() {
+          localStorage.removeItem('token');
+          location.reload();
+        };
+      } else {
+        document.getElementById('token-value').innerText = token;
+      }
     }
   </script>
 </body>
@@ -954,23 +991,41 @@ export default {
         const realUser = await env.file.get('user');
         const realPwd = await env.file.get('password');
         if (realUser && realPwd && username === realUser && password === realPwd) {
-          return new Response(JSON.stringify({ code: 1, token: 'ok' }), { headers: { 'content-type': 'application/json', ...corsHeaders } });
+          // 先查是否已有token
+          let token = await env.file.get('user_token:' + username);
+          if (token) {
+            // 检查token是否还有效
+            const user = await env.file.get('token:' + token);
+            if (user === username) {
+              // token有效，直接返回
+              return new Response(JSON.stringify({ code: 1, token }), { headers: { 'content-type': 'application/json', ...corsHeaders } });
+            }
+          }
+          // 没有token或token已失效，生成新token
+          token = Math.random().toString(36).slice(2) + Date.now().toString(36);
+          await env.file.put('token:' + token, username, { expirationTtl: 2592000 });
+          await env.file.put('user_token:' + username, token, { expirationTtl: 2592000 });
+          return new Response(JSON.stringify({ code: 1, token }), { headers: { 'content-type': 'application/json', ...corsHeaders } });
         } else {
           return new Response(JSON.stringify({ code: 0, message: '用户名或密码错误' }), { headers: { 'content-type': 'application/json', ...corsHeaders } });
         }
       }
 
-      // token校验函数
-      function checkAuth(request) {
+      // token校验函数（异步）
+      async function checkAuth(request, env) {
         const auth = request.headers.get('Authorization') || '';
-        return auth === 'Bearer ok';
+        if (!auth.startsWith('Bearer ')) return false;
+        const token = auth.slice(7);
+        const user = await env.file.get('token:' + token);
+        return !!user;
       }
 
       // API: 新建/获取/编辑/删除文本
     if (url.pathname.startsWith('/api/paste')) {
         // 新建、编辑、删除需要登录
         if (['POST','PUT','DELETE'].includes(request.method)) {
-          if (!checkAuth(request)) {
+          const authed = await checkAuth(request, env);
+          if (!authed) {
             return new Response(JSON.stringify({ code: 0, message: '未登录' }), { headers: { 'content-type': 'application/json', ...corsHeaders }, status: 401 });
           }
         }
@@ -1107,6 +1162,11 @@ export default {
             });
           }
       } else if (request.method === 'GET') {
+        // 获取内容也需要token校验
+        const authed = await checkAuth(request, env);
+        if (!authed) {
+          return new Response('Unauthorized', { status: 401 });
+        }
         const id = url.searchParams.get('id');
         if (!id) return new Response('Not found', { status: 404 });
         const text = await env.file.get(id);
@@ -1122,6 +1182,10 @@ export default {
       
       // API: 获取所有文本
       if (url.pathname === '/api/list') {
+        const authed = await checkAuth(request, env);
+        if (!authed) {
+          return new Response('Unauthorized', { status: 401 });
+        }
         try {
           let list = await env.file.get('list');
           list = list ? JSON.parse(list) : [];
@@ -1143,6 +1207,10 @@ export default {
       
       // API: 获取自定义名称
       if (url.pathname === '/api/name') {
+        const authed = await checkAuth(request, env);
+        if (!authed) {
+          return new Response('Unauthorized', { status: 401 });
+        }
         const id = url.searchParams.get('id');
         if (!id) return new Response('Not found', { status: 404 });
         const name = await env.file.get(id + '_name');
@@ -1156,7 +1224,7 @@ export default {
           headers: { 
             'content-type': 'text/plain; charset=utf-8',
             ...corsHeaders
-      }
+          } 
         });
       }
       
