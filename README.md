@@ -42,11 +42,10 @@ curl -X POST "https://你的域名/api/paste" \
   -d '{"text":"你的内容","name":"可选自定义名称"}'
 ```
 
-### 获取内容（需要token）
+### 获取内容
 ```bash
 curl "https://你的域名/api/paste?id=短链ID" -H "Authorization: Bearer 你的token"
 ```
-> 注意：所有API请求都需要带上 `Authorization: Bearer 你的token`
 
 ### 编辑内容
 ```bash
