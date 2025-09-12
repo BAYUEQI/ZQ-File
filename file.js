@@ -758,41 +758,42 @@ const html = `
     }
     
     function loadAllPastes() {
-      console.log('开始加载文本列表...');
       authFetch('/api/list')
-        .then(function(r) {
-          console.log('API响应状态:', r.ok);
-          return r.ok ? r.json() : [];
-        })
+        .then(function(r) { return r.ok ? r.json() : []; })
         .then(function(list) {
-          console.log('获取到的列表:', list);
           if(Array.isArray(list) && list.length){
             var html = 
               '<div class="stats">' +
               '<span>📊 总共 ' + list.length + ' 个文本</span>' +
-              '<span>🕒 最后更新: ' + new Date().toLocaleString() + '</span>' +
               '</div>' +
               '<h3>📋 全部文本</h3>';
             
-            // 获取所有名称
+            // 获取所有名称和时间
             Promise.all(list.map(function(id) {
-              return authFetch('/api/name?id=' + id)
-                .then(function(r) {
-                  return r.ok ? r.text() : null;
-                })
-                .catch(function() {
-                  return null;
-                });
-            })).then(function(names) {
+              return Promise.all([
+                authFetch('/api/name?id=' + id)
+                  .then(function(r) { return r.ok ? r.text() : null; })
+                  .catch(function() { return null; }),
+                authFetch('/api/time?id=' + id)
+                  .then(function(r) { return r.ok ? r.json() : {}; })
+                  .catch(function() { return {}; })
+              ]).then(function(results){
+                return { name: results[0], time: results[1] };
+              });
+            })).then(function(infoList) {
               for(var i = 0; i < list.length; i++){
                 var id = list[i];
-                var name = names[i];
+                var name = infoList[i].name;
+                var time = infoList[i].time || {};
+                var ts = time.updatedAt || time.createdAt || null;
                 var link = location.origin + '/' + id;
+                var timeText = ts ? new Date(ts).toLocaleString() : '';
                 var displayName = name ? (i + 1) + '. ' + name + ' (' + link + ')' : (i + 1) + '. ' + link;
                 
                 html += 
                   '<div class="paste-item">' +
                   '<a href="javascript:void(0)" data-id="' + id + '" class="paste-link-item" style="cursor: pointer;">' + displayName + '</a>' +
+                  (timeText ? '<div style="color:#666;font-size:12px;margin-left:10px;white-space:nowrap;">🕒 ' + timeText + '</div>' : '') +
                   '<div class="paste-actions">' +
                   '<button class="action-btn copy-btn" data-id="' + id + '" title="复制链接">📋</button>' +
                   '<button class="action-btn edit-btn" data-id="' + id + '" title="编辑">✏️</button>' +
@@ -802,11 +803,9 @@ const html = `
               }
               
               allPastes.innerHTML = html;
-              console.log('HTML已设置');
               
               // 添加事件监听器
               var links = allPastes.querySelectorAll('.paste-link-item');
-              console.log('找到链接数量:', links.length);
               for(var j = 0; j < links.length; j++){
                 links[j].addEventListener('click', function() {
                   showPasteContent(this.getAttribute('data-id'));
@@ -980,6 +979,18 @@ export default {
         'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, X-From',
       };
+      // 统一返回工具
+      const respond = {
+        json(data, init = {}) {
+          return new Response(JSON.stringify(data), { headers: { 'content-type': 'application/json', ...corsHeaders }, ...init });
+        },
+        text(data, init = {}) {
+          return new Response(data, { headers: { 'content-type': 'text/plain; charset=utf-8', ...corsHeaders }, ...init });
+        },
+        html(data, init = {}) {
+          return new Response(data, { headers: { 'content-type': 'text/html; charset=utf-8', ...corsHeaders }, ...init });
+        }
+      };
       
       // 处理OPTIONS请求
       if (request.method === 'OPTIONS') {
@@ -988,12 +999,7 @@ export default {
       
     // 前端页面
     if (url.pathname === '/' || url.pathname === '') {
-        return new Response(html, { 
-          headers: { 
-            'content-type': 'text/html; charset=utf-8',
-            ...corsHeaders
-          } 
-        });
+        return respond.html(html);
     }
       
       // 登录接口
@@ -1007,18 +1013,15 @@ export default {
           if (token) {
             // 检查token是否还有效
             const user = await env.file.get('token:' + token);
-            if (user === username) {
-              // token有效，直接返回
-              return new Response(JSON.stringify({ code: 1, token }), { headers: { 'content-type': 'application/json', ...corsHeaders } });
-            }
+            if (user === username) return respond.json({ code: 1, token });
           }
           // 没有token或token已失效，生成新token
           token = Math.random().toString(36).slice(2) + Date.now().toString(36);
           await env.file.put('token:' + token, username, { expirationTtl: 2592000 });
           await env.file.put('user_token:' + username, token, { expirationTtl: 2592000 });
-          return new Response(JSON.stringify({ code: 1, token }), { headers: { 'content-type': 'application/json', ...corsHeaders } });
+          return respond.json({ code: 1, token });
         } else {
-          return new Response(JSON.stringify({ code: 0, message: '用户名或密码错误' }), { headers: { 'content-type': 'application/json', ...corsHeaders } });
+          return respond.json({ code: 0, message: '用户名或密码错误' });
         }
       }
 
@@ -1043,22 +1046,12 @@ export default {
         // 只有PUT/DELETE需要token，POST需要token但ZQ-SubLink可以免token
         if (['PUT','DELETE'].includes(request.method) || (request.method === 'POST' && !fromZQSubLink)) {
           const authed = await checkAuth(request, env);
-          if (!authed) {
-            return new Response(JSON.stringify({ code: 0, message: '未登录' }), { headers: { 'content-type': 'application/json', ...corsHeaders }, status: 401 });
-          }
+          if (!authed) return respond.json({ code: 0, message: '未登录' }, { status: 401 });
         }
       if (request.method === 'POST') {
           try {
             const { text, name } = await request.json();
-            if (!text) {
-              return new Response(JSON.stringify({ code: 0, message: '内容不能为空' }), { 
-                headers: { 
-                  'content-type': 'application/json',
-                  ...corsHeaders
-                }, 
-                status: 400 
-              });
-            }
+            if (!text) return respond.json({ code: 0, message: '内容不能为空' }, { status: 400 });
             // 生成唯一且不为保留字的ID
             const reserved = ['user', 'password', 'list'];
             let id;
@@ -1066,6 +1059,8 @@ export default {
               id = Math.random().toString(36).slice(2, 8);
             } while (reserved.includes(id));
             await env.file.put(id, text);
+            // 记录创建时间（毫秒）
+            await env.file.put(id + '_createdAt', Date.now().toString());
             if (name) {
               await env.file.put(id + '_name', name);
             }
@@ -1074,44 +1069,19 @@ export default {
             list.unshift(id);
             if (list.length > 100) list = list.slice(0, 100);
             await env.file.put('list', JSON.stringify(list));
-            return new Response(JSON.stringify({ code: 1, id }), { 
-              headers: { 
-                'content-type': 'application/json',
-                ...corsHeaders
-              } 
-            });
+            return respond.json({ code: 1, id });
           } catch (error) {
-            return new Response(JSON.stringify({ code: 0, message: '处理请求失败: ' + error.message }), { 
-              headers: { 
-                'content-type': 'application/json',
-                ...corsHeaders
-              }, 
-              status: 500 
-            });
+            return respond.json({ code: 0, message: '处理请求失败: ' + error.message }, { status: 500 });
           }
         } else if (request.method === 'PUT') {
           try {
             const { id, text, name } = await request.json();
-            if (!id || !text) {
-              return new Response(JSON.stringify({ code: 0, message: 'ID和内容不能为空' }), { 
-                headers: { 
-                  'content-type': 'application/json',
-                  ...corsHeaders
-                }, 
-                status: 400 
-              });
-            }
+            if (!id || !text) return respond.json({ code: 0, message: 'ID和内容不能为空' }, { status: 400 });
             const existing = await env.file.get(id);
-            if (!existing) {
-              return new Response(JSON.stringify({ code: 0, message: '文本不存在' }), { 
-                headers: { 
-                  'content-type': 'application/json',
-                  ...corsHeaders
-                }, 
-                status: 404 
-              });
-            }
+            if (!existing) return respond.json({ code: 0, message: '文本不存在' }, { status: 404 });
         await env.file.put(id, text);
+            // 记录修改时间（毫秒）
+            await env.file.put(id + '_updatedAt', Date.now().toString());
             if (name !== undefined) {
               if (name) {
                 await env.file.put(id + '_name', name);
@@ -1119,65 +1089,29 @@ export default {
                 await env.file.delete(id + '_name');
               }
             }
-            return new Response(JSON.stringify({ code: 1, message: '更新成功' }), { 
-              headers: { 
-                'content-type': 'application/json',
-                ...corsHeaders
-              } 
-            });
+            return respond.json({ code: 1, message: '更新成功' });
           } catch (error) {
-            return new Response(JSON.stringify({ code: 0, message: '更新失败: ' + error.message }), { 
-              headers: { 
-                'content-type': 'application/json',
-                ...corsHeaders
-              }, 
-              status: 500 
-            });
+            return respond.json({ code: 0, message: '更新失败: ' + error.message }, { status: 500 });
           }
         } else if (request.method === 'DELETE') {
           try {
             const { id } = await request.json();
-            if (!id) {
-              return new Response(JSON.stringify({ code: 0, message: 'ID不能为空' }), { 
-                headers: { 
-                  'content-type': 'application/json',
-                  ...corsHeaders
-                }, 
-                status: 400 
-              });
-            }
+            if (!id) return respond.json({ code: 0, message: 'ID不能为空' }, { status: 400 });
             const existing = await env.file.get(id);
-            if (!existing) {
-              return new Response(JSON.stringify({ code: 0, message: '文本不存在' }), { 
-                headers: { 
-                  'content-type': 'application/json',
-                  ...corsHeaders
-                }, 
-                status: 404 
-              });
-            }
+            if (!existing) return respond.json({ code: 0, message: '文本不存在' }, { status: 404 });
             await env.file.delete(id);
             await env.file.delete(id + '_name');
+            await env.file.delete(id + '_createdAt');
+            await env.file.delete(id + '_updatedAt');
             let list = await env.file.get('list');
             if (list) {
               list = JSON.parse(list);
               list = list.filter(item => item !== id);
               await env.file.put('list', JSON.stringify(list));
             }
-            return new Response(JSON.stringify({ code: 1, message: '删除成功' }), { 
-              headers: { 
-                'content-type': 'application/json',
-                ...corsHeaders
-              } 
-            });
+            return respond.json({ code: 1, message: '删除成功' });
           } catch (error) {
-            return new Response(JSON.stringify({ code: 0, message: '删除失败: ' + error.message }), { 
-              headers: { 
-                'content-type': 'application/json',
-                ...corsHeaders
-              }, 
-              status: 500 
-            });
+            return respond.json({ code: 0, message: '删除失败: ' + error.message }, { status: 500 });
           }
       } else if (request.method === 'GET') {
         // 获取内容也需要token校验
@@ -1189,61 +1123,44 @@ export default {
         if (!id) return new Response('Not found', { status: 404 });
         const text = await env.file.get(id);
         if (!text) return new Response('Not found', { status: 404 });
-          return new Response(text, { 
-            headers: { 
-              'content-type': 'text/plain; charset=utf-8',
-              ...corsHeaders
-            } 
-          });
+          return respond.text(text);
         }
       }
       
       // API: 获取所有文本
       if (url.pathname === '/api/list') {
         const authed = await checkAuth(request, env);
-        if (!authed) {
-          return new Response('Unauthorized', { status: 401 });
-        }
+        if (!authed) return new Response('Unauthorized', { status: 401 });
         try {
           let list = await env.file.get('list');
           list = list ? JSON.parse(list) : [];
-          return new Response(JSON.stringify(list), { 
-            headers: { 
-              'content-type': 'application/json',
-              ...corsHeaders
-            } 
-          });
+          return respond.json(list);
         } catch (error) {
-          return new Response(JSON.stringify([]), { 
-            headers: { 
-              'content-type': 'application/json',
-              ...corsHeaders
-            } 
-          });
+          return respond.json([]);
         }
       }
       
       // API: 获取自定义名称
       if (url.pathname === '/api/name') {
         const authed = await checkAuth(request, env);
-        if (!authed) {
-          return new Response('Unauthorized', { status: 401 });
-        }
+        if (!authed) return new Response('Unauthorized', { status: 401 });
         const id = url.searchParams.get('id');
         if (!id) return new Response('Not found', { status: 404 });
         const name = await env.file.get(id + '_name');
-        if (!name) return new Response('', { 
-          headers: { 
-            'content-type': 'text/plain; charset=utf-8',
-            ...corsHeaders
-          } 
-        });
-        return new Response(name, { 
-          headers: { 
-            'content-type': 'text/plain; charset=utf-8',
-            ...corsHeaders
-          } 
-        });
+        if (!name) return respond.text('');
+        return respond.text(name);
+      }
+
+      // API: 获取单条时间信息（createdAt/updatedAt）
+      if (url.pathname === '/api/time') {
+        const authed = await checkAuth(request, env);
+        if (!authed) return new Response('Unauthorized', { status: 401 });
+        const id = url.searchParams.get('id');
+        if (!id) return new Response('Not found', { status: 404 });
+        const createdAt = await env.file.get(id + '_createdAt');
+        const updatedAt = await env.file.get(id + '_updatedAt');
+        const result = { createdAt: createdAt ? Number(createdAt) : null, updatedAt: updatedAt ? Number(updatedAt) : null };
+        return respond.json(result);
       }
       
     // 直接访问短链
@@ -1259,7 +1176,7 @@ export default {
       });
     }
       
-      return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8' } });
+      return respond.html(html);
       
     } catch (error) {
       return new Response('Worker Error: ' + error.message, { status: 500 });
