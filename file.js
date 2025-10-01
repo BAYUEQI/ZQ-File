@@ -635,6 +635,72 @@ const html = `
       pasteLink.classList.add('show');
     }
     
+    function showCopySuccess(id, message) {
+      // 找到对应的复制按钮
+      const copyBtn = document.querySelector('[data-id="' + id + '"].copy-btn');
+      if (copyBtn) {
+        // 移除现有的提示
+        const existingTip = document.querySelector('.copy-tip');
+        if (existingTip) {
+          existingTip.remove();
+        }
+        
+        // 创建新的提示
+        const tip = document.createElement('div');
+        tip.className = 'copy-tip';
+        tip.style = 'position:fixed;background:#51cf66;color:white;padding:6px 10px;border-radius:6px;font-size:11px;z-index:10000;box-shadow:0 4px 12px rgba(0,0,0,0.3);pointer-events:none;white-space:nowrap;';
+        tip.innerHTML = '✅ ' + message;
+        
+        // 添加到body
+        document.body.appendChild(tip);
+        
+        // 计算位置（按钮上方）
+        const rect = copyBtn.getBoundingClientRect();
+        tip.style.left = (rect.left + rect.width / 2 - tip.offsetWidth / 2) + 'px';
+        tip.style.top = (rect.top - tip.offsetHeight - 8) + 'px';
+        
+        // 2秒后自动移除
+        setTimeout(() => {
+          if (tip.parentNode) {
+            tip.remove();
+          }
+        }, 2000);
+      }
+    }
+    
+    function showCopyError(id, message) {
+      // 找到对应的复制按钮
+      const copyBtn = document.querySelector('[data-id="' + id + '"].copy-btn');
+      if (copyBtn) {
+        // 移除现有的提示
+        const existingTip = document.querySelector('.copy-tip');
+        if (existingTip) {
+          existingTip.remove();
+        }
+        
+        // 创建新的提示
+        const tip = document.createElement('div');
+        tip.className = 'copy-tip';
+        tip.style = 'position:fixed;background:#ff6b6b;color:white;padding:6px 10px;border-radius:6px;font-size:11px;z-index:10000;box-shadow:0 4px 12px rgba(0,0,0,0.3);pointer-events:none;white-space:nowrap;';
+        tip.innerHTML = '❌ ' + message;
+        
+        // 添加到body
+        document.body.appendChild(tip);
+        
+        // 计算位置（按钮上方）
+        const rect = copyBtn.getBoundingClientRect();
+        tip.style.left = (rect.left + rect.width / 2 - tip.offsetWidth / 2) + 'px';
+        tip.style.top = (rect.top - tip.offsetHeight - 8) + 'px';
+        
+        // 2秒后自动移除
+        setTimeout(() => {
+          if (tip.parentNode) {
+            tip.remove();
+          }
+        }, 2000);
+      }
+    }
+    
     async function editPaste(id) {
       try {
         const res = await authFetch('/api/paste?id=' + id);
@@ -817,18 +883,18 @@ const html = `
       // 使用现代浏览器的Clipboard API
       if (navigator.clipboard && window.isSecureContext) {
         navigator.clipboard.writeText(link).then(function() {
-          showSuccess('链接已复制到剪贴板！');
+          showCopySuccess(id, '链接已复制到剪贴板！');
         }).catch(function() {
           // 如果Clipboard API失败，使用传统方法
-          fallbackCopyTextToClipboard(link);
+          fallbackCopyTextToClipboard(link, id);
         });
       } else {
         // 传统方法
-        fallbackCopyTextToClipboard(link);
+        fallbackCopyTextToClipboard(link, id);
       }
     }
     
-    function fallbackCopyTextToClipboard(text) {
+    function fallbackCopyTextToClipboard(text, id) {
       const textArea = document.createElement('textarea');
       textArea.value = text;
       textArea.style.position = 'fixed';
@@ -841,12 +907,24 @@ const html = `
       try {
         const successful = document.execCommand('copy');
         if (successful) {
-          showSuccess('内容已复制到剪贴板！');
+          if (id) {
+            showCopySuccess(id, '链接已复制到剪贴板！');
+          } else {
+            showSuccess('内容已复制到剪贴板！');
+          }
+        } else {
+          if (id) {
+            showCopyError(id, '复制失败，请手动复制');
+          } else {
+            showError('复制失败，请手动复制');
+          }
+        }
+      } catch (err) {
+        if (id) {
+          showCopyError(id, '复制失败，请手动复制');
         } else {
           showError('复制失败，请手动复制');
         }
-      } catch (err) {
-        showError('复制失败，请手动复制');
       }
       
       document.body.removeChild(textArea);
