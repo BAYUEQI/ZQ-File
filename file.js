@@ -412,6 +412,35 @@ const html = `
         width: 100%;
         justify-content: flex-end;
       }
+      
+      #token-box {
+        margin-top: 15px !important;
+        max-width: none !important;
+        min-width: auto !important;
+        width: 100% !important;
+      }
+      
+      #token-box .header {
+        padding: 10px 12px !important;
+      }
+      
+      #token-box .header span {
+        font-size: 13px !important;
+      }
+      
+      #token-box button {
+        padding: 4px 8px !important;
+        font-size: 11px !important;
+      }
+      
+      #token-content {
+        padding: 12px !important;
+      }
+      
+      #token-value {
+        font-size: 10px !important;
+        padding: 6px !important;
+      }
     }
     .login-form {
       max-width: 350px;
@@ -450,6 +479,13 @@ const html = `
       margin-top: 10px;
       min-height: 22px;
     }
+    
+    .help-text {
+      font-size: 12px;
+      color: #666;
+      margin-top: 5px;
+      margin-bottom: 15px;
+    }
   </style>
 </head>
 <body>
@@ -475,8 +511,14 @@ const html = `
           <textarea id="text" placeholder="支持任何文本内容，包括代码、配置、链接等..."></textarea>
         </div>
         <div class="form-group">
-          <label for="custom-name">📝 自定义名称（可选）</label>
-          <input type="text" id="custom-name" placeholder="给你的文本起个名字，留空则自动生成" style="width: 100%; padding: 12px; border: 2px solid #e1e5e9; border-radius: 8px; font-size: 14px;">
+          <label for="custom-title">📝 自定义显示名称（可选）</label>
+          <input type="text" id="custom-title" placeholder="例如: 我的重要笔记，留空则显示链接" style="width: 100%; padding: 12px; border: 2px solid #e1e5e9; border-radius: 8px; font-size: 14px; margin-bottom: 15px;">
+          <div class="help-text">用于在列表中显示，支持任意字符，长度1-50字符</div>
+        </div>
+        <div class="form-group">
+          <label for="custom-name">🔗 自定义链接后缀（可选）</label>
+          <input type="text" id="custom-name" placeholder="例如: my-note-123，留空则自动生成" style="width: 100%; padding: 12px; border: 2px solid #e1e5e9; border-radius: 8px; font-size: 14px;">
+          <div class="help-text">支持字母、数字、连字符(-)、下划线(_)、点号(.)、加号(+)和等号(=)</div>
         </div>
         <button type="submit" class="btn">🚀 提交</button>
   </form>
@@ -489,16 +531,6 @@ const html = `
     <button class="btn btn-secondary" onclick="closePasteContent()">❌ 取消</button>
   </div>
       
-      <div class="edit-form" id="edit-form">
-        <h4>✏️ 编辑内容</h4>
-        <div class="form-group">
-          <label for="edit-name">📝 自定义名称</label>
-          <input type="text" id="edit-name" placeholder="给你的文本起个名字，留空则自动生成" style="width: 100%; padding: 12px; border: 2px solid #e1e5e9; border-radius: 8px; font-size: 14px; margin-bottom: 15px;">
-        </div>
-        <textarea id="edit-text" placeholder="编辑你的内容..."></textarea>
-        <button class="btn btn-success" onclick="saveEdit()">💾 保存</button>
-        <button class="btn btn-secondary" onclick="cancelEdit()">❌ 取消</button>
-      </div>
       
       <div class="all-pastes" id="all-pastes">
         <div class="loading">🔄 加载中...</div>
@@ -511,18 +543,43 @@ const html = `
     const pasteLink = document.getElementById('paste-link');
     const pasteContent = document.getElementById('paste-content');
     const allPastes = document.getElementById('all-pastes');
-    const editForm = document.getElementById('edit-form');
-    const editText = document.getElementById('edit-text');
     
     let currentEditId = null;
+    
+    // 验证自定义链接格式
+    function validateCustomName(name) {
+      if (!name) return true; // 允许为空
+      // 支持字母、数字、连字符、下划线、点号、加号、等号，但排除可能有问题的字符
+      const regex = /^[a-zA-Z0-9._+-]+$/;
+      return regex.test(name);
+    }
+    
+    // 验证自定义显示名称格式
+    function validateCustomTitle(title) {
+      if (!title) return true; // 允许为空
+      return title.length >= 1 && title.length <= 50;
+    }
     
     form.onsubmit = async (e) => {
       e.preventDefault();
       const text = document.getElementById('text').value.trim();
+      const customTitle = document.getElementById('custom-title').value.trim();
       const customName = document.getElementById('custom-name').value.trim();
       
       if (!text) {
         showError('请输入内容');
+        return;
+      }
+      
+      // 验证自定义显示名称格式
+      if (customTitle && !validateCustomTitle(customTitle)) {
+        showError('自定义显示名称格式无效，长度1-50字符');
+        return;
+      }
+      
+      // 验证自定义链接格式
+      if (customName && !validateCustomName(customName)) {
+        showError('自定义链接格式无效，支持字母、数字、连字符(-)、下划线(_)、点号(.)、加号(+)和等号(=)');
         return;
       }
       
@@ -536,6 +593,7 @@ const html = `
         headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({
             text: text,
+            title: customTitle || null,
             name: customName || null
           })
       });
@@ -554,6 +612,7 @@ const html = `
           
           // 清空输入框
           document.getElementById('text').value = '';
+          document.getElementById('custom-title').value = '';
           document.getElementById('custom-name').value = '';
           
           // 刷新列表
@@ -580,21 +639,57 @@ const html = `
       try {
         const res = await authFetch('/api/paste?id=' + id);
         const nameRes = await authFetch('/api/name?id=' + id);
+        const titleRes = await authFetch('/api/title?id=' + id);
         
         if (res.ok) {
           const text = await res.text();
           const name = nameRes.ok ? await nameRes.text() : '';
-          
-          editText.value = text;
-          document.getElementById('edit-name').value = name;
-          currentEditId = id;
+          const title = titleRes.ok ? await titleRes.text() : '';
           
           // 隐藏其他可能显示的内容
           pasteLink.classList.remove('show');
           pasteContent.classList.remove('show');
           
-          editForm.classList.add('show');
-          editForm.scrollIntoView({ behavior: 'smooth' });
+          // 移除现有的编辑框
+          const existingEditForm = document.querySelector('.edit-form');
+          if (existingEditForm) {
+            existingEditForm.remove();
+          }
+          
+          // 找到对应的paste-item
+          const pasteItem = document.querySelector('[data-id="' + id + '"]').closest('.paste-item');
+          if (pasteItem) {
+            // 创建编辑框
+            const editForm = document.createElement('div');
+            editForm.className = 'edit-form show';
+            editForm.innerHTML = 
+              '<h4>✏️ 编辑内容</h4>' +
+              '<div class="form-group">' +
+                '<label for="edit-title">📝 自定义显示名称</label>' +
+                '<input type="text" id="edit-title" placeholder="例如: 我的重要笔记" style="width: 100%; padding: 12px; border: 2px solid #e1e5e9; border-radius: 8px; font-size: 14px; margin-bottom: 15px;">' +
+                '<div class="help-text">用于在列表中显示，支持任意字符，长度1-50字符</div>' +
+              '</div>' +
+              '<div class="form-group">' +
+                '<label for="edit-name">🔗 自定义链接后缀</label>' +
+                '<input type="text" id="edit-name" placeholder="例如: my-note-123" style="width: 100%; padding: 12px; border: 2px solid #e1e5e9; border-radius: 8px; font-size: 14px; margin-bottom: 15px;">' +
+                '<div class="help-text">支持字母、数字、连字符(-)、下划线(_)、点号(.)、加号(+)和等号(=)</div>' +
+              '</div>' +
+              '<textarea id="edit-text" placeholder="编辑你的内容..."></textarea>' +
+              '<button class="btn btn-success" onclick="saveEdit()">💾 保存</button>' +
+              '<button class="btn btn-secondary" onclick="cancelEdit()">❌ 取消</button>';
+            
+            // 在对应的paste-item后面插入编辑框
+            pasteItem.parentNode.insertBefore(editForm, pasteItem.nextSibling);
+            
+            // 设置编辑内容
+            document.getElementById('edit-text').value = text;
+            document.getElementById('edit-title').value = title;
+            document.getElementById('edit-name').value = name;
+            currentEditId = id;
+            
+            // 滚动到编辑框
+            editForm.scrollIntoView({ behavior: 'smooth' });
+          }
         } else {
           showError('获取内容失败');
         }
@@ -604,20 +699,38 @@ const html = `
     }
     
     async function saveEdit() {
-      if (!currentEditId || !editText.value.trim()) {
+      const editTextElement = document.getElementById('edit-text');
+      const editTitleElement = document.getElementById('edit-title');
+      const editNameElement = document.getElementById('edit-name');
+      
+      if (!currentEditId || !editTextElement || !editTextElement.value.trim()) {
         showError('请先选择要编辑的内容并输入新内容');
         return;
       }
       
+      const customTitle = editTitleElement ? editTitleElement.value.trim() : '';
+      const customName = editNameElement ? editNameElement.value.trim() : '';
+      
+      // 验证自定义显示名称格式
+      if (customTitle && !validateCustomTitle(customTitle)) {
+        showError('自定义显示名称格式无效，长度1-50字符');
+        return;
+      }
+      
+      // 验证自定义链接格式
+      if (customName && !validateCustomName(customName)) {
+        showError('自定义链接格式无效，支持字母、数字、连字符(-)、下划线(_)、点号(.)、加号(+)和等号(=)');
+        return;
+      }
+      
       try {
-        const customName = document.getElementById('edit-name').value.trim();
-        
         const res = await authFetch('/api/paste', {
           method: 'PUT',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({
             id: currentEditId,
-            text: editText.value.trim(),
+            text: editTextElement.value.trim(),
+            title: customTitle || null,
             name: customName || null
           })
         });
@@ -637,10 +750,11 @@ const html = `
     }
     
     function cancelEdit() {
-      editForm.classList.remove('show');
+      const editForm = document.querySelector('.edit-form');
+      if (editForm) {
+        editForm.remove();
+      }
       pasteContent.classList.remove('show');
-      editText.value = '';
-      document.getElementById('edit-name').value = '';
       currentEditId = null;
     }
     
@@ -653,7 +767,10 @@ const html = `
           
           // 隐藏其他可能显示的内容
           pasteLink.classList.remove('show');
-          editForm.classList.remove('show');
+          const editForm = document.querySelector('.edit-form');
+          if (editForm) {
+            editForm.remove();
+          }
           
           pasteContent.classList.add('show');
           
@@ -669,7 +786,10 @@ const html = `
     
     function closePasteContent() {
       pasteContent.classList.remove('show');
-      editForm.classList.remove('show');
+      const editForm = document.querySelector('.edit-form');
+      if (editForm) {
+        editForm.remove();
+      }
       document.getElementById('paste-text').innerText = '';
     }
     
@@ -768,27 +888,33 @@ const html = `
               '</div>' +
               '<h3>📋 全部文本</h3>';
             
-            // 获取所有名称和时间
+            // 获取所有名称、标题和时间
             Promise.all(list.map(function(id) {
               return Promise.all([
                 authFetch('/api/name?id=' + id)
+                  .then(function(r) { return r.ok ? r.text() : null; })
+                  .catch(function() { return null; }),
+                authFetch('/api/title?id=' + id)
                   .then(function(r) { return r.ok ? r.text() : null; })
                   .catch(function() { return null; }),
                 authFetch('/api/time?id=' + id)
                   .then(function(r) { return r.ok ? r.json() : {}; })
                   .catch(function() { return {}; })
               ]).then(function(results){
-                return { name: results[0], time: results[1] };
+                return { name: results[0], title: results[1], time: results[2] };
               });
             })).then(function(infoList) {
               for(var i = 0; i < list.length; i++){
                 var id = list[i];
                 var name = infoList[i].name;
+                var title = infoList[i].title;
                 var time = infoList[i].time || {};
                 var ts = time.updatedAt || time.createdAt || null;
                 var link = location.origin + '/' + id;
                 var timeText = ts ? new Date(ts).toLocaleString() : '';
-                var displayName = name ? (i + 1) + '. ' + name + ' (' + link + ')' : (i + 1) + '. ' + link;
+                var displayName = title ? (i + 1) + '. ' + title + ' (' + link + ')' : 
+                                 name ? (i + 1) + '. ' + name + ' (' + link + ')' : 
+                                 (i + 1) + '. ' + link;
                 
                 html += 
                   '<div class="paste-item">' +
@@ -855,7 +981,10 @@ const html = `
             
             // 隐藏其他可能显示的内容
             pasteLink.classList.remove('show');
-            editForm.classList.remove('show');
+            const editForm = document.querySelector('.edit-form');
+            if (editForm) {
+              editForm.remove();
+            }
             
             // 滚动到内容区域
             pasteContent.scrollIntoView({ behavior: 'smooth' });
@@ -938,26 +1067,81 @@ const html = `
       if (!tokenBox) {
         tokenBox = document.createElement('div');
         tokenBox.id = 'token-box';
-        tokenBox.style = 'margin:20px 0 12px 0;padding:14px 8px;background:linear-gradient(90deg,#e0e7ff 0%,#f8fafc 100%);border:2px solid #667eea;border-radius:12px;box-shadow:0 2px 8px rgba(102,126,234,0.08);display:flex;align-items:flex-start;gap:10px;position:relative;overflow:auto;flex-wrap:wrap;word-break:break-all;';
-        tokenBox.innerHTML = '<span style="font-size:20px;color:#667eea;margin-right:6px;">🔑</span>' +
-          '<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;">' +
-          '<div style="font-size:14px;color:#555;">当前 API Token</div>' +
-          '<div id="token-value" style="font-family:monospace;font-size:13px;word-break:break-all;background:#fff;border-radius:5px;padding:5px 6px;display:block;max-width:100vw;overflow-x:auto;">' + token + '</div>' +
+        tokenBox.style = 'margin:20px auto 0 auto;background:rgba(255,255,255,0.15);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.2);border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,0.1);padding:0;overflow:hidden;transition:all 0.3s ease;max-width:400px;min-width:250px;';
+        
+        // 创建头部（始终显示）
+        const header = document.createElement('div');
+        header.style = 'padding:12px 16px;background:rgba(255,255,255,0.1);color:white;display:flex;align-items:center;justify-content:space-between;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.1);';
+        header.innerHTML = 
+          '<div style="display:flex;align-items:center;gap:8px;">' +
+            '<span style="font-size:16px;">🔑</span>' +
+            '<span style="font-size:14px;font-weight:500;">API Token</span>' +
           '</div>' +
-          '<div style="display:flex;flex-direction:column;gap:6px;min-width:80px;">' +
-          '<button id="copy-token-btn" style="padding:5px 0;border-radius:6px;border:none;background:linear-gradient(90deg,#667eea 0%,#764ba2 100%);color:#fff;cursor:pointer;font-size:13px;transition:background 0.2s;width:100%;">复制</button>' +
-          '<button id="logout-btn" style="padding:5px 0;border-radius:6px;border:none;background:linear-gradient(90deg,#ff6b6b 0%,#ee5a52 100%);color:#fff;cursor:pointer;font-size:13px;transition:background 0.2s;width:100%;">退出登录</button>' +
+          '<div style="display:flex;align-items:center;gap:8px;">' +
+            '<button id="copy-token-btn" style="padding:6px 12px;border-radius:6px;border:none;background:rgba(255,255,255,0.2);color:white;cursor:pointer;font-size:12px;transition:all 0.2s;backdrop-filter:blur(5px);">复制</button>' +
+            '<button id="logout-btn" style="padding:6px 12px;border-radius:6px;border:none;background:rgba(255,107,107,0.6);color:white;cursor:pointer;font-size:12px;transition:all 0.2s;backdrop-filter:blur(5px);">退出</button>' +
+            '<span id="toggle-icon" style="font-size:12px;transition:transform 0.3s ease;">▼</span>' +
           '</div>';
-        document.querySelector('.container').prepend(tokenBox);
-        document.getElementById('copy-token-btn').onclick = function() {
+        
+        // 创建内容区域（可折叠）
+        const content = document.createElement('div');
+        content.id = 'token-content';
+        content.style = 'padding:16px;background:rgba(255,255,255,0.9);border-top:1px solid rgba(255,255,255,0.2);display:none;backdrop-filter:blur(5px);';
+        content.innerHTML = 
+          '<div style="margin-bottom:12px;">' +
+            '<div style="font-size:12px;color:#666;margin-bottom:6px;">完整 Token:</div>' +
+            '<div id="token-value" style="font-family:monospace;font-size:11px;background:#f8f9fa;border:1px solid #e9ecef;border-radius:6px;padding:8px;word-break:break-all;line-height:1.4;color:#333;">' + token + '</div>' +
+          '</div>' +
+          '<div style="font-size:11px;color:#999;text-align:center;">点击头部可折叠/展开</div>';
+        
+        tokenBox.appendChild(header);
+        tokenBox.appendChild(content);
+        document.querySelector('.header').appendChild(tokenBox);
+        
+        // 添加悬停效果
+        tokenBox.addEventListener('mouseenter', function() {
+          this.style.transform = 'translateY(-2px)';
+          this.style.boxShadow = '0 12px 40px rgba(0,0,0,0.15)';
+        });
+        tokenBox.addEventListener('mouseleave', function() {
+          this.style.transform = 'translateY(0)';
+          this.style.boxShadow = '0 8px 32px rgba(0,0,0,0.1)';
+        });
+        
+        // 折叠/展开功能
+        header.addEventListener('click', function() {
+          const content = document.getElementById('token-content');
+          const icon = document.getElementById('toggle-icon');
+          if (content.style.display === 'none') {
+            content.style.display = 'block';
+            icon.style.transform = 'rotate(180deg)';
+          } else {
+            content.style.display = 'none';
+            icon.style.transform = 'rotate(0deg)';
+          }
+        });
+        
+        // 按钮事件
+        document.getElementById('copy-token-btn').onclick = function(e) {
+          e.stopPropagation();
           navigator.clipboard.writeText(token).then(function(){
-            document.getElementById('copy-token-btn').innerText = '已复制';
-            setTimeout(()=>{document.getElementById('copy-token-btn').innerText='复制';}, 1200);
+            const btn = document.getElementById('copy-token-btn');
+            const originalText = btn.innerText;
+            btn.innerText = '已复制';
+            btn.style.background = 'rgba(81,207,102,0.8)';
+            setTimeout(() => {
+              btn.innerText = originalText;
+              btn.style.background = 'rgba(255,255,255,0.2)';
+            }, 1500);
           });
         };
-        document.getElementById('logout-btn').onclick = function() {
-          localStorage.removeItem('token');
-          location.reload();
+        
+        document.getElementById('logout-btn').onclick = function(e) {
+          e.stopPropagation();
+          if (confirm('确定要退出登录吗？')) {
+            localStorage.removeItem('token');
+            location.reload();
+          }
         };
       } else {
         document.getElementById('token-value').innerText = token;
@@ -1050,46 +1234,172 @@ export default {
         }
       if (request.method === 'POST') {
           try {
-            const { text, name } = await request.json();
+            const { text, title, name } = await request.json();
             if (!text) return respond.json({ code: 0, message: '内容不能为空' }, { status: 400 });
-            // 生成唯一且不为保留字的ID
-            const reserved = ['user', 'password', 'list'];
+            
+            // 验证自定义显示名称格式
+            if (title && (title.length < 1 || title.length > 50)) {
+              return respond.json({ 
+                code: 0, 
+                message: '自定义显示名称格式无效，长度1-50字符' 
+              }, { status: 400 });
+            }
+            
+            // 验证自定义链接后缀格式
+            if (name && !/^[a-zA-Z0-9._+-]+$/.test(name)) {
+              return respond.json({ 
+                code: 0, 
+                message: '自定义链接格式无效，支持字母、数字、连字符(-)、下划线(_)、点号(.)、加号(+)和等号(=)' 
+              }, { status: 400 });
+            }
+            
+            // 生成唯一ID（如果提供了自定义名称，则使用它作为ID）
+            const reserved = ['user', 'password', 'list', 'api'];
             let id;
-            do {
-              id = Math.random().toString(36).slice(2, 8);
-            } while (reserved.includes(id));
+            
+            if (name) {
+              // 使用自定义名称作为ID
+              if (reserved.includes(name)) {
+                return respond.json({ 
+                  code: 0, 
+                  message: '该名称为系统保留字，请更换其他名称' 
+                }, { status: 400 });
+              }
+              
+              // 检查ID是否已存在
+              const existing = await env.file.get(name);
+              if (existing) {
+                return respond.json({ 
+                  code: 0, 
+                  message: '该链接已存在，请更换其他名称' 
+                }, { status: 409 });
+              }
+              
+              id = name;
+            } else {
+              // 自动生成ID
+              do {
+                id = Math.random().toString(36).slice(2, 8);
+              } while (reserved.includes(id));
+            }
+            
             await env.file.put(id, text);
             // 记录创建时间（毫秒）
             await env.file.put(id + '_createdAt', Date.now().toString());
-            if (name) {
-              await env.file.put(id + '_name', name);
+            
+            // 存储自定义显示名称
+            if (title) {
+              await env.file.put(id + '_title', title);
             }
+            
             let list = await env.file.get('list');
             list = list ? JSON.parse(list) : [];
             list.unshift(id);
             if (list.length > 100) list = list.slice(0, 100);
             await env.file.put('list', JSON.stringify(list));
+            
             return respond.json({ code: 1, id });
           } catch (error) {
             return respond.json({ code: 0, message: '处理请求失败: ' + error.message }, { status: 500 });
           }
         } else if (request.method === 'PUT') {
           try {
-            const { id, text, name } = await request.json();
+            const { id, text, title, name } = await request.json();
             if (!id || !text) return respond.json({ code: 0, message: 'ID和内容不能为空' }, { status: 400 });
+            
+            // 检查原ID是否存在
             const existing = await env.file.get(id);
             if (!existing) return respond.json({ code: 0, message: '文本不存在' }, { status: 404 });
-        await env.file.put(id, text);
-            // 记录修改时间（毫秒）
-            await env.file.put(id + '_updatedAt', Date.now().toString());
-            if (name !== undefined) {
-              if (name) {
-                await env.file.put(id + '_name', name);
-              } else {
+            
+            // 验证自定义显示名称格式
+            if (title && (title.length < 1 || title.length > 50)) {
+              return respond.json({ 
+                code: 0, 
+                message: '自定义显示名称格式无效，长度1-50字符' 
+              }, { status: 400 });
+            }
+            
+            // 如果要修改名称（链接后缀）
+            let newId = id;
+            if (name !== undefined && name !== (await env.file.get(id + '_name') || '')) {
+              // 验证新名称格式
+              if (name && !/^[a-zA-Z0-9._+-]+$/.test(name)) {
+                return respond.json({ 
+                  code: 0, 
+                  message: '自定义链接格式无效，支持字母、数字、连字符(-)、下划线(_)、点号(.)、加号(+)和等号(=)' 
+                }, { status: 400 });
+              }
+              
+              const reserved = ['user', 'password', 'list', 'api'];
+              
+              // 如果提供了新名称且与原ID不同
+              if (name && name !== id) {
+                if (reserved.includes(name)) {
+                  return respond.json({ 
+                    code: 0, 
+                    message: '该名称为系统保留字，请更换其他名称' 
+                  }, { status: 400 });
+                }
+                
+                // 检查新ID是否已存在
+                const nameExists = await env.file.get(name);
+                if (nameExists) {
+                  return respond.json({ 
+                    code: 0, 
+                    message: '该链接已存在，请更换其他名称' 
+                  }, { status: 409 });
+                }
+                
+                // 迁移数据到新ID
+                newId = name;
+                
+                // 复制原数据到新ID
+                await env.file.put(newId, text);
+                
+                // 复制时间戳
+                const createdAt = await env.file.get(id + '_createdAt');
+                if (createdAt) await env.file.put(newId + '_createdAt', createdAt);
+                
+                // 删除原ID数据
+                await env.file.delete(id);
+                await env.file.delete(id + '_name');
+                await env.file.delete(id + '_createdAt');
+                await env.file.delete(id + '_updatedAt');
+                
+                // 更新列表中的ID
+                let list = await env.file.get('list');
+                if (list) {
+                  list = JSON.parse(list);
+                  list = list.map(item => item === id ? newId : item);
+                  await env.file.put('list', JSON.stringify(list));
+                }
+              } else if (!name) {
+                // 如果清空名称，不改变ID
                 await env.file.delete(id + '_name');
               }
+            } else {
+              // 不修改名称，只更新内容
+              await env.file.put(id, text);
             }
-            return respond.json({ code: 1, message: '更新成功' });
+            
+            // 记录修改时间（毫秒）
+            await env.file.put(newId + '_updatedAt', Date.now().toString());
+            
+            // 处理自定义显示名称
+            if (title !== undefined) {
+              if (title) {
+                await env.file.put(newId + '_title', title);
+              } else {
+                await env.file.delete(newId + '_title');
+              }
+            }
+            
+            // 如果提供了名称且与ID不同，则保存名称（用于显示）
+            if (name && name !== newId) {
+              await env.file.put(newId + '_name', name);
+            }
+            
+            return respond.json({ code: 1, message: '更新成功', id: newId });
           } catch (error) {
             return respond.json({ code: 0, message: '更新失败: ' + error.message }, { status: 500 });
           }
@@ -1101,6 +1411,7 @@ export default {
             if (!existing) return respond.json({ code: 0, message: '文本不存在' }, { status: 404 });
             await env.file.delete(id);
             await env.file.delete(id + '_name');
+            await env.file.delete(id + '_title');
             await env.file.delete(id + '_createdAt');
             await env.file.delete(id + '_updatedAt');
             let list = await env.file.get('list');
@@ -1149,6 +1460,17 @@ export default {
         const name = await env.file.get(id + '_name');
         if (!name) return respond.text('');
         return respond.text(name);
+      }
+      
+      // API: 获取自定义显示名称
+      if (url.pathname === '/api/title') {
+        const authed = await checkAuth(request, env);
+        if (!authed) return new Response('Unauthorized', { status: 401 });
+        const id = url.searchParams.get('id');
+        if (!id) return new Response('Not found', { status: 404 });
+        const title = await env.file.get(id + '_title');
+        if (!title) return respond.text('');
+        return respond.text(title);
       }
 
       // API: 获取单条时间信息（createdAt/updatedAt）
