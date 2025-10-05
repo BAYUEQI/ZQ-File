@@ -518,7 +518,7 @@ const html = `
         <div class="form-group">
           <label for="custom-name">🔗 自定义链接后缀（可选）</label>
           <input type="text" id="custom-name" placeholder="例如: my-note-123，留空则自动生成" style="width: 100%; padding: 12px; border: 2px solid #e1e5e9; border-radius: 8px; font-size: 14px;">
-          <div class="help-text">支持字母、数字、连字符(-)、下划线(_)、点号(.)、加号(+)和等号(=)</div>
+          <div class="help-text">支持字母、数字、连字符(-)、下划线(_)、点号(.)；其他字符会自动删除</div>
         </div>
         <button type="submit" class="btn">🚀 提交</button>
   </form>
@@ -546,11 +546,14 @@ const html = `
     
     let currentEditId = null;
     
-    // 验证自定义链接格式
+    // 处理与验证自定义链接格式
+    function sanitizeCustomName(name) {
+      if (!name) return '';
+      return name.replace(/[^a-zA-Z0-9._-]/g, '');
+    }
     function validateCustomName(name) {
       if (!name) return true; // 允许为空
-      // 支持字母、数字、连字符、下划线、点号、加号、等号，但排除可能有问题的字符
-      const regex = /^[a-zA-Z0-9._+-]+$/;
+      const regex = /^[a-zA-Z0-9._-]+$/;
       return regex.test(name);
     }
     
@@ -564,7 +567,11 @@ const html = `
       e.preventDefault();
       const text = document.getElementById('text').value.trim();
       const customTitle = document.getElementById('custom-title').value.trim();
-      const customName = document.getElementById('custom-name').value.trim();
+      let customName = document.getElementById('custom-name').value.trim();
+      // 自动清理非法字符
+      customName = sanitizeCustomName(customName);
+      // 回写清理后的值，便于用户看到最终结果
+      document.getElementById('custom-name').value = customName;
       
       if (!text) {
         showError('请输入内容');
@@ -579,7 +586,7 @@ const html = `
       
       // 验证自定义链接格式
       if (customName && !validateCustomName(customName)) {
-        showError('自定义链接格式无效，支持字母、数字、连字符(-)、下划线(_)、点号(.)、加号(+)和等号(=)');
+        showError('自定义链接格式无效，支持字母、数字、连字符(-)、下划线(_)、点号(.)');
         return;
       }
       
@@ -738,7 +745,7 @@ const html = `
               '<div class="form-group">' +
                 '<label for="edit-name">🔗 自定义链接后缀</label>' +
                 '<input type="text" id="edit-name" placeholder="例如: my-note-123" style="width: 100%; padding: 12px; border: 2px solid #e1e5e9; border-radius: 8px; font-size: 14px; margin-bottom: 15px;">' +
-                '<div class="help-text">支持字母、数字、连字符(-)、下划线(_)、点号(.)、加号(+)和等号(=)</div>' +
+              '<div class="help-text">支持字母、数字、连字符(-)、下划线(_)、点号(.)；其他字符会自动删除</div>' +
               '</div>' +
               '<textarea id="edit-text" placeholder="编辑你的内容..."></textarea>' +
               '<button class="btn btn-success" onclick="saveEdit()">💾 保存</button>' +
@@ -775,7 +782,10 @@ const html = `
       }
       
       const customTitle = editTitleElement ? editTitleElement.value.trim() : '';
-      const customName = editNameElement ? editNameElement.value.trim() : '';
+      let customName = editNameElement ? editNameElement.value.trim() : '';
+      // 自动清理非法字符
+      customName = sanitizeCustomName(customName);
+      if (editNameElement) editNameElement.value = customName;
       
       // 验证自定义显示名称格式
       if (customTitle && !validateCustomTitle(customTitle)) {
@@ -785,7 +795,7 @@ const html = `
       
       // 验证自定义链接格式
       if (customName && !validateCustomName(customName)) {
-        showError('自定义链接格式无效，支持字母、数字、连字符(-)、下划线(_)、点号(.)、加号(+)和等号(=)');
+        showError('自定义链接格式无效，支持字母、数字、连字符(-)、下划线(_)、点号(.)');
         return;
       }
       
@@ -1312,7 +1322,7 @@ export default {
         }
       if (request.method === 'POST') {
           try {
-            const { text, title, name } = await request.json();
+            let { text, title, name } = await request.json();
             if (!text) return respond.json({ code: 0, message: '内容不能为空' }, { status: 400 });
             
             // 验证自定义显示名称格式
@@ -1323,11 +1333,14 @@ export default {
               }, { status: 400 });
             }
             
-            // 验证自定义链接后缀格式
-            if (name && !/^[a-zA-Z0-9._+-]+$/.test(name)) {
+            // 服务器端清理并验证自定义链接后缀格式
+            if (name) {
+              name = name.replace(/[^a-zA-Z0-9._-]/g, '');
+            }
+            if (name && !/^[a-zA-Z0-9._-]+$/.test(name)) {
               return respond.json({ 
                 code: 0, 
-                message: '自定义链接格式无效，支持字母、数字、连字符(-)、下划线(_)、点号(.)、加号(+)和等号(=)' 
+                message: '自定义链接格式无效，支持字母、数字、连字符(-)、下划线(_)、点号(.)' 
               }, { status: 400 });
             }
             
@@ -1382,7 +1395,7 @@ export default {
           }
         } else if (request.method === 'PUT') {
           try {
-            const { id, text, title, name } = await request.json();
+            let { id, text, title, name } = await request.json();
             if (!id || !text) return respond.json({ code: 0, message: 'ID和内容不能为空' }, { status: 400 });
             
             // 检查原ID是否存在
@@ -1401,10 +1414,13 @@ export default {
             let newId = id;
             if (name !== undefined && name !== (await env.file.get(id + '_name') || '')) {
               // 验证新名称格式
-              if (name && !/^[a-zA-Z0-9._+-]+$/.test(name)) {
+              if (name) {
+                name = name.replace(/[^a-zA-Z0-9._-]/g, '');
+              }
+              if (name && !/^[a-zA-Z0-9._-]+$/.test(name)) {
                 return respond.json({ 
                   code: 0, 
-                  message: '自定义链接格式无效，支持字母、数字、连字符(-)、下划线(_)、点号(.)、加号(+)和等号(=)' 
+                  message: '自定义链接格式无效，支持字母、数字、连字符(-)、下划线(_)、点号(.)' 
                 }, { status: 400 });
               }
               
